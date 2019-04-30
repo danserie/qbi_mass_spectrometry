@@ -29,7 +29,7 @@ net = TestModel(input_dim=26,
                 gpu=opt.gpu)
 trainer = Trainer(net, opt)
 
-inputs = np.load('/home/zqwu/unique_data/massiveKB_meta.npy').item()
+inputs = np.load('./unique_data/massiveKB_meta.npy').item()
 samples = sorted(list(inputs.keys()))
 np.random.seed(123)
 np.random.shuffle(samples)
