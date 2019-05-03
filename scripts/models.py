@@ -11,11 +11,12 @@ import torch.nn.functional as F
 import numpy as np
 from scripts.biLSTM import BiLSTM, MultiheadAttention, CombinedConv1D, PositionalEncoding
 
-def CELoss(labels, outs, batch_size=8):
+def CELoss(labels, outs, weights, batch_size=8):
   logits = outs.transpose(0, 1).contiguous().view(batch_size, -1)
   labels = labels.transpose(0, 1).contiguous().view((batch_size, -1))
+  weights = weights.view((batch_size, 1))
   log_prob = F.log_softmax(logits, 1)
-  ce = -(labels * log_prob).sum()
+  ce = -((labels * log_prob) * weights).sum()
   return ce
   
 class TestModel(nn.Module):

@@ -3,3 +3,10 @@ cos-sim: 0.9123
 
 model_seq
 cos-sim: 0.9114
+
+
+model_seq_limited(b/y up to charge 2):
+cos-sim: 0.9254
+
+model_trans_limited(b/y up to charge 2):
+cos-sim: 0.9232

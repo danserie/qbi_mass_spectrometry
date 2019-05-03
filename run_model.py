@@ -21,8 +21,8 @@ neutral_loss_choices = [0, 17, 18, 34, 35]
 n_neutral_losses = 5
 n_charges = 4
 
-net = TestModel(input_dim=26,
-                n_tasks=2*n_charges*n_neutral_losses,
+net = TransformerModel(input_dim=26,
+                n_tasks=2*n_neutral_losses*n_charges,
                 embedding_dim=256,
                 hidden_dim_attention=32,
                 n_attention_heads=8,
@@ -37,8 +37,8 @@ n_samples = len(samples)
 train_inputs = {k: inputs[k] for k in samples[:int(0.8*n_samples)]}
 valid_inputs = {k: inputs[k] for k in samples[int(0.8*n_samples):]}
 
-trainer.load('./saved_models/bkp/model_seq.pth')
+trainer.load('./saved_models/bkp/model_trans.pth')
 for ct in range(10):
   trainer.train(train_inputs, n_epochs=2)
   trainer.save('./saved_models/model-%d.pth' % ct)
-  sims = trainer.evaluate(valid_inputs)
+  sims, rs = trainer.evaluate(valid_inputs)

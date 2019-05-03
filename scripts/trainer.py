@@ -18,6 +18,7 @@ from scripts.models import CELoss
 from torch.utils.data import Dataset, DataLoader
 import os
 import pickle
+from scipy.stats import pearsonr
 
 class Trainer(object):
   def __init__(self, 
@@ -87,7 +88,7 @@ class Trainer(object):
           weights = weights.cuda()
         
         output = self.net(X, X_metas, self.opt.batch_size)
-        error = self.criterion(y, output, self.opt.batch_size)
+        error = self.criterion(y, output, weights, self.opt.batch_size)
         loss += error
         epoch_loss += error
         ct += 1
@@ -147,11 +148,14 @@ class Trainer(object):
   def evaluate(self, test_data_mapping):
     labels, test_preds, _ = self.predict(test_data_mapping)
     cos_sims = []
+    pearsonrs = []
     for label, pred in zip(labels, test_preds):
       sim = np.sum(label * pred)/np.sqrt(np.sum(label*label) * np.sum(pred*pred))
       cos_sims.append(sim)
-    print("Cos similarity %f" % np.mean(cos_sims))
-    return cos_sims
+      pearsonrs.append(pearsonr(label.flatten(), pred.flatten())[0])
+    print("Cos similarity %f" % np.nanmean(cos_sims))
+    print("Pearson-r %f" % np.nanmean(pearsonrs))
+    return cos_sims, pearsonrs
 
 
   @staticmethod
@@ -246,11 +250,16 @@ class SpectraDataset(Dataset):
     out_batch_y = []
     batch_weights = []
     for sample in batch_raw:
+      y = sample[2]#.sum(2)[:, np.array([0, 1, 4, 5])]
+      if np.sum(y) == 0:
+        batch_weights.append(0.)
+      else:
+        batch_weights.append(1.)
+      y = y/(np.sum(y) + 1e-5)
       sample_length = sample[0].shape[0]
       out_batch_X.append(np.pad(sample[0], ((0, batch_length - sample_length), (0, 0)), 'constant'))
       out_batch_X_metas.append(sample[1])
-      out_batch_y.append(np.pad(sample[2], ((0, batch_length - sample_length), (0, 0), (0, 0)), 'constant'))
-      batch_weights.append(self.sample_weight(sample))
+      out_batch_y.append(np.pad(y, ((0, batch_length - sample_length), (0, 0), (0, 0)), 'constant'))
       assert out_batch_X[-1].shape[0] - out_batch_y[-1].shape[0] == 1
       
     if len(out_batch_X) < self.batch_size:
