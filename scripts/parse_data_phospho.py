@@ -12,19 +12,6 @@ neutral_loss_regex = r"[by][\d]+-(?P<neutral_loss>[\d]+)"
 neutral_gain_regex = r"[by][\d]+[+](?P<neutral_loss>[\d]+)"
 delta_regex = r"\/(?P<delta>-?[0-9]\d*\.*\d*)$"
 indicator_codes = "by"
-csv_output_rows = [
-    'acetyl',
-    'name',
-    'charge',
-    'precursor',
-    'mz',
-    'intensity',
-    'ion',
-    'position',
-    'neutral_loss',
-    'ion_charge',
-    'delta',
-]
 
 beginning_modifier_replacements = {
     "n[43]": 1
@@ -35,26 +22,27 @@ amino_acid_modifier_replacements = {
     "M[147]": "@",
     "Q[129]": "E", #deamidation of asparagine
     "N[115]": "D", #deamidation of glutamine
-    "Q[110]": "#",
-#    "Q[111]": "#",
+#    "Q[110]": "#", # this present in massiveKB
+    "Q[111]": "#", # this present in phospho-series
     "S[167]": "$",
     "T[181]": "%",
     "Y[243]": "^",  
-    "M[0]":  "",
-    "M[42]": "n[43]",
-    "M[173]": "n[43]M",
-    "M[189]": "n[43]@"
+#    "M[0]":  "",
+#    "M[42]": "n[43]",
+#    "M[173]": "n[43]M",
+#    "M[189]": "n[43]@"
 }
 
 amino_acid_codes = "ACDEFGHIKLMNPQRSTVWY"
 amino_acid_modifiers = "!@#$%^"
 amino_acid_modified_codes = amino_acid_codes+amino_acid_modifiers
 
-amino_acid_MWs = np.array([ 71.0371, 103.0092, 115.0269, 129.0426, 147.0684, #ACDEF
-                            57.0215, 137.0589, 113.0841, 128.0950, 113.0841, #GHIKL
-                           131.0405, 114.0429,  97.0528, 128.0586, 156.1011, #MNPQR
-                            87.0320, 101.0477,  99.0684, 186.0793, 163.0633, #STVWY
-                           160.0306, 147.0354, 110.0480, 166.9984, 181.0140, 243.0297]) #!@#$%^
+amino_acid_MWs = np.array([ 71.0371, 103.0092, 115.0269, 129.0426, 147.0684, # ACDEF
+                            57.0215, 137.0589, 113.0841, 128.0950, 113.0841, # GHIKL
+                           131.0405, 114.0429,  97.0528, 128.0586, 156.1011, # MNPQR
+                            87.0320, 101.0477,  99.0684, 186.0793, 163.0633, # STVWY
+                           160.0306, 147.0354, # !@
+                           111.0560, 166.9984, 181.0140, 243.0297]) # #(Note # is different in massiveKB)$%^
 
 neutral_loss_choices = [0, 17, 18, 34, 35]
 neutral_loss_mass = {
@@ -343,28 +331,41 @@ def make_table(output):
   table = table/table.sum()
   return table
 
+def pair_to_name(pair): 
+  return reverse_one_hot_encode(pair[0], amino_acid_modified_codes) + str(pair[1][0]) + str(pair[1][1])
+
+def sim(p1, p2): 
+  return np.sum(p1[2] * p2[2])/np.sqrt(np.sum(p1[2]*p1[2]) * np.sum(p2[2]*p2[2])) 
+
 if __name__ == "__main__":
-  output_file = "/hd/trainingData/massiveKB.pkl"
-  spec_data_file = open("/hd/trainingData/massiveKB_noSynPurged.sptxt", "r")
+  inputs = ["/hd/trainingData/human2.sptxt",
+            "/hd/trainingData/marx2.sptxt",
+            "/hd/trainingData/mouse2.sptxt",
+            "/hd/trainingData/rat2.sptxt"]
+  output_file = "/hd/trainingData/phospho.pkl"
+  
   j = 0
  
   samples = []
   current_chunk = []
-  for line in spec_data_file:
-    if line.strip():
-      if line.startswith('###'): continue
-      current_chunk.append(line.strip())
-    else:
-      sample = parse_chunk(current_chunk)
-      if not sample is None:
-        samples.append(sample)
-      current_chunk = []
-      if len(samples) > 0 and len(samples) % 10000 == 0:
-        print("Finished %d samples" % len(samples))
-        with open(output_file + str(j), 'wb') as f:
-          pickle.dump(samples, f)
-        j += 1
-        samples = []
+  for f_n in inputs:
+    spec_data_file = open(f_n, 'r')
+    for line in spec_data_file:
+      if line.strip():
+        if line.startswith('###'): continue
+        current_chunk.append(line.strip())
+      else:
+        sample = parse_chunk(current_chunk)
+        if not sample is None:
+          samples.append(sample)
+        current_chunk = []
+        if len(samples) > 0 and len(samples) % 10000 == 0:
+          print("Finished %d samples" % len(samples))
+          with open(output_file + str(j), 'wb') as f:
+            pickle.dump(samples, f)
+          j += 1
+          samples = []
+    spec_data_file.close()
 
   if len(current_chunk) > 5:
     sample = parse_chunk(current_chunk)
@@ -374,18 +375,20 @@ if __name__ == "__main__":
     pickle.dump(samples, f)
     
   ################################################################
-  output_file = "/hd/trainingData/massiveKB.pkl"
+  output_file = "/hd/trainingData/phospho.pkl"
   pairs = {}
   raws = {}
-  for i in range(50):
+  for i in range(53): # Length limit of 52 amino acids
     pairs[i] = []
     raws[i] = []
-  j = 171
+  j = 13
   for f_n in range(j+1):
     f_name = output_file + str(f_n)
     dat = pickle.load(open(f_name, 'rb'))
     for d in dat:
       X = d['name']
+      if X.shape[0] > 52:
+        continue
       X_meta = (d['acetyl'], d['charge'])
       y = make_table(d)
       if not np.all(y == y):
@@ -393,30 +396,64 @@ if __name__ == "__main__":
       pairs[X.shape[0]].append((X, X_meta, y))
       raws[X.shape[0]].append(d['raw'])
 
-  total_pairs = []
-  all_raws = []
-  for i in range(50):
-    total_pairs.extend(pairs[i])
-    all_raws.extend(raws[i])
-  
+  unique_pairs = []
+  unique_pairs_raw = []
+  issue_pairs = []
+  n_issues = 0
+  n_duplicates = 0
+
+  existing_names = set()
+  for length in range(53):
+    ps = pairs[length]
+    ps_raw = raws[length]
+    if len(ps) == 0:
+      continue
+    names = [pair_to_name(pair) for pair in ps]
+    unique_names, cts = np.unique(names, return_counts=True)
+    ct1_names = set(unique_names[np.where(cts == 1)])
+    ct2_names = set(unique_names[np.where(cts > 1)])
+    
+    for pair, pair_raw in zip(ps, ps_raw):
+      n = pair_to_name(pair)
+      if n in existing_names:
+        continue
+      existing_names.add(n)
+      if n in ct1_names:
+        unique_pairs.append(pair)
+        unique_pairs_raw.append(pair_raw)
+      elif n in ct2_names:
+        multiples = []
+        for i, n_ in enumerate(names):
+          if n_ == n:
+            multiples.append((ps[i], ps_raw[i]))
+        sims = [sim(multiples[0][0], m[0]) for m in multiples]
+        if min(sims) < 0.98:
+          issue_pairs.extend(multiples)
+          n_issues += 1
+        else:
+          unique_pairs.append(pair)
+          unique_pairs_raw.append(pair_raw)
+          n_duplicates += 1
+
   j = 0
   metadata = {}
   to_be_saved = {}
   raw_saved = {}
-  for i, p in enumerate(total_pairs):
+  for i, p in enumerate(unique_pairs):
     if len(to_be_saved) >= 400:
-      np.save('/hd/data/massiveKB%d' % j, to_be_saved)
-      np.save('/hd/data/massiveKB_raw%d' % j, raw_saved)
+      np.save('./unique_data/phospho%d' % j, to_be_saved)
+      np.save('./unique_data/phospho_raw%d' % j, raw_saved)
       to_be_saved = {}
       raw_saved = {}
       j += 1
       
     to_be_saved[i] = p
-    raw_saved[i] = all_raws[i]
-    metadata[i] = ['/hd/data/massiveKB%d.npy' % j, p[0].shape[0]]
+    raw_saved[i] = unique_pairs_raw[i]
+    metadata[i] = ['./unique_data/phospho%d.npy' % j, p[0].shape[0]]
 
-  np.save('/hd/data/massiveKB%d' % j, to_be_saved)
-  np.save('/hd/data/massiveKB_raw%d' % j, raw_saved)
+  np.save('./unique_data/phospho%d' % j, to_be_saved)
+  np.save('./unique_data/phospho_raw%d' % j, raw_saved)
   
-  np.save('/hd/data/massiveKB_meta', metadata)
-
+  np.save('./unique_data/phospho_meta', metadata)
+  np.save('./unique_data/phospho_issue_pairs', issue_pairs)
+  
